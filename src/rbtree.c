@@ -12,6 +12,9 @@ typedef enum {
 // 필요한 함수를 추가로 정의한다
 void insert_fixup(node_t *curr, rbtree *t);
 void rotate_dir(node_t *curr, direction dir, rbtree *t);
+void transplant(rbtree *t, node_t *pre, node_t *post);
+node_t *return_successor(rbtree *t, node_t *p);
+void delete_fixup(rbtree *t, node_t *node_to_fix);
 
 rbtree *new_rbtree(void) {
   // rbtree 타입의 포인터 p를 선언하고 메모리 할당
@@ -92,13 +95,11 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
     if (key >= curr->key){
       is_right = true;
       curr = curr->right;
-      printf("%i 오른쪽\n", key);
     }
     // 작으면 왼쪽으로 간다
     else{
       is_right = false;
       curr = curr->left;
-      printf("%i 왼쪽\n", key);
     }
   }
   // 여기까지 다 돌고 나왔으면 curr은 nil이고 parent정보가 있을 것.
@@ -118,17 +119,14 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
     curr->color = RBTREE_BLACK;
   }else{
     if (is_right){
-      printf("오른쪽에 넣을게요\n");
       parent->right = curr;
     }
     else{
-      printf("왼쪽에 넣을게요\n");
       parent->left = curr;
     }
   }
   // 삽입한 후 부모가 레드라서 레드-레드 충돌이 생기는 경우 추가적인 픽스가 필요하다. 따로 함수를 정의한다.
   if (curr->parent->color == RBTREE_RED){
-    printf("수정합니다\n");
     insert_fixup(curr, t);
   }
   
@@ -142,7 +140,7 @@ node_t *rbtree_find(const rbtree *t, const key_t key) {
   while (curr != t->nil){
     // 필요한 키값을 찾으면 반환한다
     if (key == curr->key){
-      break;
+      return curr;
     // 키값을 못찾았으면 계속 서칭한다
     }else if (key > curr->key){
       curr = curr->right;
@@ -150,26 +148,87 @@ node_t *rbtree_find(const rbtree *t, const key_t key) {
       curr = curr->left;
     }
   }
-  // 키값을 못찾으면 null, 찾으면 해당 노드를 반환한다
-  if (curr == t->nil){
-    return NULL;
-  }else{
-    return curr;
-  }
+  // 키값을 못찾으면 null을 반환한다
+  return NULL;
 }
 
 node_t *rbtree_min(const rbtree *t) {
-  // TODO: implement find
-  return t->root;
+  node_t *curr = t->root;
+  while (curr != t->nil){
+    if (curr->left == t->nil){
+      return curr;
+    }
+    curr = curr->left;
+  }
+  // 최소값 못찾으면 NULL(ex. root가 nil인 경우)
+  return NULL;
 }
 
 node_t *rbtree_max(const rbtree *t) {
-  // TODO: implement find
-  return t->root;
+  node_t *curr = t->root;
+  while (curr != t->nil){
+    if (curr->right == t->nil){
+      return curr;
+    }
+    curr = curr->right;
+  }
+  // 최대값 못찾으면 NULL(ex. root가 nil인 경우)
+  return NULL;
 }
 
 int rbtree_erase(rbtree *t, node_t *p) {
-  // TODO: implement erase
+  // 삭제 노드의 대체 노드, 대체 노드의 대체 노드, fixup 노드를 정의한다
+  // fix-up은 node_to_fix을 대상으로 한다.
+  node_t *replacer, *replacer2, *node_to_fix;
+  int deleted_color = p->color;
+
+  // p의 왼쪽 자식이 없는 경우
+  if (p->left == t->nil){
+    replacer = p->right;
+    node_to_fix = replacer;
+    transplant(t, p, replacer);
+  // p의 오른쪽 자식이 없는 경우
+  }else if(p->right == t->nil){
+    replacer = p->left;
+    node_to_fix = replacer;
+    transplant(t, p, replacer);
+  // 자식이 둘다 있는 경우
+  }else{
+    //replacer = successor를 찾고, successor를 대체할 노드를 찾는다
+    replacer = return_successor(t, p);
+    replacer2 = replacer->right;
+    // 찾은 노드에서 추가적으로 필요한 작업
+    node_to_fix = replacer2;
+    deleted_color = replacer->color;
+
+    // replacer가 삭제노드의 자녀인 경우, 왼쪽 자식이 없기 때문에 그냥 올려버리면 끝
+    if (replacer->parent == p){
+      transplant(t, p, replacer);
+      // 이식후에 왼쪽자식과의 관계를 업데이트한다
+      replacer->left = p->left;
+      replacer->left->parent = replacer;
+      replacer->color = p->color;
+      
+    // replacer가 삭제노드의 자녀 이하인 경우, replacer의 오른쪽 노드로 replacer를 대체해야 한다.
+    }else{
+      // replacer를 replacer2로 교체한다
+      transplant(t, replacer, replacer2);
+      // 이식후에 왼쪽, 오른쪽 자식과의 관계를 업데이트한다
+      transplant(t, p, replacer);
+      replacer->right = p->right;
+      replacer->right->parent = replacer;
+      replacer->left = p->left;
+      replacer->left->parent = replacer;
+      replacer->color = p->color;
+    }
+  }
+
+  // 만약 위 과정에서 블랙 노드를 삭제했다면, 추가적인 fixup이 필요하다
+  if (deleted_color == RBTREE_BLACK){
+    delete_fixup(t, node_to_fix);
+  }
+  // 할당되었던 메모리를 해제한다
+  free(p);
   return 0;
 }
 
@@ -200,7 +259,6 @@ void insert_fixup(node_t *curr, rbtree *t){
     }else{
       // 전처리 과정. 꺾여있을 경우 펴준다
       if (grandparent->left->right == curr){
-        printf("<로 꺾였네요\n");
         rotate_dir(curr, LEFT, t);
       } 
       else if(grandparent->right->left == curr){
@@ -214,7 +272,6 @@ void insert_fixup(node_t *curr, rbtree *t){
       if (grandparent->left == curr){
         rotate_dir(curr, RIGHT, t);
       }else{
-        printf("최종회전처리를 한다고?\n");
         rotate_dir(curr, LEFT, t);
       }
     }
@@ -235,7 +292,6 @@ void rotate_dir(node_t *curr, direction dir, rbtree *t){
   if (dir == LEFT){
     // p가 root라면 gp는 Nil이다. 갱신 전 체크가 필요하다.
     if (grandparent != t->nil){
-      printf("nil 아니에요\n");
       grandparent->left = curr;
       grandparent->left->parent = grandparent;
     }else{
@@ -267,25 +323,40 @@ void rotate_dir(node_t *curr, direction dir, rbtree *t){
   }
 }
 
-// int main(){
-//   rbtree *t = new_rbtree();
-//   printf("t->root address: %p\n", t->root);
-//   printf("t->nil address: %p\n", t->nil);
-//   node_t *p1 = rbtree_insert(t, 1024);
-  
-//   printf("t->root address: %p\n", t->root);
-//   printf("t->nil address: %p\n", t->nil);
-//   // printf("t->root->key : %i\n", t->root->key);
-//   // printf("t->root->color : %d\n", t->root->color);
+// 특정 노드를 다른 노드로 대체하면서, 부모-자식 관계를 갱신하는 함수
+void transplant(rbtree *t, node_t *pre, node_t *post){
+  // 교체 대상 노드가 루트인 경우, post를 루트로 지정한다
+  if (pre->parent == t->nil){
+    t->root = post;
+  // 교체 대상 노드 부모의 자식 정보를 업데이트 한다
+  } else if (pre->parent->left == pre){
+    pre->parent->left = post;
+  } else{
+    pre->parent->right = post;
+  }
+  // post의 부모까지 업데이트한다
+  post->parent = pre->parent;
+}
 
-//   // printf("t->root->right->key : %i\n", t->root->right->key);
-//   // printf("t->root->right->color : %i\n", t->root->right->color);
+node_t *return_successor(rbtree *t, node_t *p){
+  if (p->right == t->nil){
+    while (p->parent != t->nil){
+      if (p->parent->left == p){
+        return p->parent; 
+      }
+      p = p->parent;
+    }
+    return NULL;
+  }
+  else{
+    node_t *successor = p->right;
+    while (successor->left != t->nil){
+      successor = successor->left;
+    }
+    return successor;
+  }
+}
 
-//   // printf("t->root->left->key : %i\n", t->root->left->key);
-//   // printf("t->root->left->color : %i\n", t->root->left->color);
-
-
-
-
-//   return 0;
-// }
+void delete_fixup(rbtree *t, node_t *node_to_fix){
+  return;
+}
