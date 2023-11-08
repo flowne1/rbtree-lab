@@ -15,6 +15,7 @@ void rotate_dir(node_t *curr, direction dir, rbtree *t);
 void transplant(rbtree *t, node_t *pre, node_t *post);
 node_t *return_successor(rbtree *t, node_t *p);
 void delete_fixup(rbtree *t, node_t *target);
+void inorder_trav (const rbtree *t, node_t *start, key_t *arr, int *i, const int n);
 
 rbtree *new_rbtree(void) {
   // rbtree 타입의 포인터 p를 선언하고 메모리 할당
@@ -141,7 +142,6 @@ node_t *rbtree_find(const rbtree *t, const key_t key) {
     return curr;
   }
   while (curr != t->nil){
-    printf("현재값:%i과 key:%i를 비교합니다\n", curr->key, key);
     // 필요한 키값을 찾으면 반환한다
     if (key == curr->key){
       return curr;
@@ -153,7 +153,6 @@ node_t *rbtree_find(const rbtree *t, const key_t key) {
     }
   }
   // 키값을 못찾으면 null을 반환한다
-  printf("설마 여기까지감?\n");
   return NULL;
 }
 
@@ -189,9 +188,7 @@ int rbtree_erase(rbtree *t, node_t *p) {
 
   // p의 왼쪽 자식이 없는 경우
   if (p->left == t->nil){
-    printf("왼쪽자식이 없네요\n");
     replacer = p->right;
-    printf("replacer:%i\n", replacer->key);
     target = replacer;
     transplant(t, p, replacer);
   // p의 오른쪽 자식이 없는 경우
@@ -234,7 +231,6 @@ int rbtree_erase(rbtree *t, node_t *p) {
 
   // 만약 위 과정에서 블랙 노드를 삭제했다면, 추가적인 fixup이 필요하다
   if (deleted_color == RBTREE_BLACK){
-    printf("delete-fixup 시작\n");
     delete_fixup(t, target);
   }
   // 할당되었던 메모리를 해제한다
@@ -243,9 +239,26 @@ int rbtree_erase(rbtree *t, node_t *p) {
 }
 
 int rbtree_to_array(const rbtree *t, key_t *arr, const size_t n) {
-  // TODO: implement to_array
+  // - `tree_to_array(tree, array, n)`
+  // - RB tree의 내용을 *key 순서대로* 주어진 array로 변환 > key 오름차순 얘기하는듯? 뭔말인지 잘 모르겠음
+  // - array의 크기는 n으로 주어지며 tree의 크기가 n 보다 큰 경우에는 순서대로 n개 까지만 변환
+  // - array의 메모리 공간은 이 함수를 부르는 쪽에서 준비하고 그 크기를 n으로 알려줍니다.
+  int i = 0;
+  inorder_trav(t, t->root, arr, &i, n);
   return 0;
 }
+
+void inorder_trav(const rbtree *t, node_t *start, key_t *arr, int *ptr_i, const int n){
+  if (start == t->nil || *ptr_i >= n){
+    return;
+  }else{
+  inorder_trav(t, start->left, arr, ptr_i, n);
+  arr[*ptr_i] = start->key;
+  (*ptr_i)++;
+  inorder_trav(t, start->right, arr, ptr_i, n);
+  }
+}
+
 
 void insert_fixup(node_t *curr, rbtree *t){
   node_t *parent, *grandparent, *uncle;
@@ -381,8 +394,6 @@ node_t *return_successor(rbtree *t, node_t *p){
 }
 
 void delete_fixup(rbtree *t, node_t *target){
-  printf("수정대상:%i\n", target->key);
-  printf("부모노드:%i\n", target->parent->key);
   // target이 root거나 레드가 될 때까지 반복한다. 이유는 앞의 두 케이스는 삭제된 블랙을 복구하는게 매우 단순해짐.
   while (target != t->root && target->color == RBTREE_BLACK) {
     // 형제(=sibling) 및 그 자식들을 정의한다. 체크할 때 위치 정보도 같이 확인해 놓아야 한다.
@@ -390,11 +401,8 @@ void delete_fixup(rbtree *t, node_t *target){
     // Fix up, 타겟 왼쪽
     if (target->parent->left == target){
       sibling = target->parent->right;
-      printf("형제노드:%i\n", sibling->key);
-      printf("형제노드색:%i\n", sibling->color);
       // CASE 1. 형제가 레드인 경우, RBT 속성을 유지하면서 타겟의 형제를 블랙으로 바꾸기 위한 전처리 작업을 한다
       if (sibling->color == RBTREE_RED){
-        printf("CASE1\n");
         target->parent->color = RBTREE_RED;
         sibling->color = RBTREE_BLACK;
         rotate_dir(sibling->parent, LEFT, t);
@@ -404,7 +412,6 @@ void delete_fixup(rbtree *t, node_t *target){
       // 왜 체크함? 블랙을 하나 지우면서 전체의 black-height가 1 낮아졌기 때문에 부모에서 fix-up을 추가로 진행해야된다
       // 왜 이렇게 함? 궁극적으로 이렇게 올라가다보면 루트를 만나고, 루트는 더이상 fix-up을 진행하지 않아도 되기 때문이다
       if (sibling->left->color == RBTREE_BLACK && sibling->right->color == RBTREE_BLACK){
-        printf("CASE2\n");
         sibling->color = RBTREE_RED;
         target->color = RBTREE_BLACK;
         target = target->parent;
@@ -415,7 +422,6 @@ void delete_fixup(rbtree *t, node_t *target){
         // CASE 3. 형제의 inner child가 RED이고 outer child BLACK인 경우
         // 적절하게 회전연산을 수행하여 CASE 4로 만든다 
         if (inner->color == RBTREE_RED && outer->color == RBTREE_BLACK){
-          printf("CASE3\n");
           sibling->color = RBTREE_RED;
           inner->color = RBTREE_BLACK;
           rotate_dir(inner->parent, RIGHT, t);
@@ -427,7 +433,6 @@ void delete_fixup(rbtree *t, node_t *target){
         // CASE 4. 형제의 outer child가 RED인 경우
         // 부모와 형제의 색을 변경하고, 돌린다
         if (outer->color == RBTREE_RED){
-          printf("CASE4\n");
           sibling->color = sibling->parent->color;
           sibling->parent->color = RBTREE_BLACK;
           outer->color = RBTREE_BLACK;
@@ -474,21 +479,4 @@ void delete_fixup(rbtree *t, node_t *target){
   return;
 }
 
-// int main(){
-//   const key_t arr[] = {10, 5, 8, 34, 67, 23, 156, 24, 2, 12, 24, 36, 990, 25};
-//   const size_t n = sizeof(arr) / sizeof(arr[0]);
-//   rbtree *t = new_rbtree();
-//   for (int i = 0; i < n; i++) {
-//     node_t *p = rbtree_insert(t, arr[i]);
-//   }
-//   printf("%i\n", t->root->key);
-//   printf("%i\n", t->root->left->key);
-//   printf("%i\n", t->root->left->right->key);
-//   printf("%i\n", t->root->left->right->left->key);
-//   printf("%i\n", t->root->left->right->left->right->key);
-//   printf("%i\n", t->root->left->right->left->right->right->key);
-//   printf("%i\n", t->root->left->right->left->right->left->key);
-
-
-//   return 0;
 // }

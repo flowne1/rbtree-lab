@@ -317,12 +317,7 @@ void test_find_erase(rbtree *t, const key_t *arr, const size_t n) {
   }
 
   for (int i = 0; i < n; i++) {
-    printf("\n\narr[%d] = %d 찾겠습니다\n", i, arr[i]);
-    printf("%i\n", t->root->key);
-    printf("%i\n", t->root->left->key);
-    printf("%i\n", t->root->right->key);
     node_t *p = rbtree_find(t, arr[i]);
-    printf("%p\n", p);
     assert(p != NULL);
     assert(p->key == arr[i]);
     rbtree_erase(t, p);
@@ -376,11 +371,8 @@ int main(void) {
   test_insert_single(1024);
   test_find_single(512, 1024);
   test_erase_root(128);
-  printf("\n\n여기까진 통과했어요1\n\n");
   test_find_erase_fixed();
-  printf("\n\n여기까진 통과했어요2\n\n");
   test_minmax_suite();
-  printf("\n\n여기까진 통과했어요3\n\n");
   test_to_array_suite();
   test_distinct_values();
   test_duplicate_values();
